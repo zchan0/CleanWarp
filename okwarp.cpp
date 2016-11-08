@@ -19,6 +19,7 @@ static const unsigned char ESC = 27;
 /** ImageIO handlers */
 
 static int inW, inH, outW, outH;
+static int warpFuncNum;
 static unsigned char *outPixmap;
 static std::string input, output;
 
@@ -29,24 +30,40 @@ static ImageIO ioWarped = ImageIO();
 
 float X(float u, float v)
 {
-  return pow(u, 2);
+  return u;
 }
 
 float Y(float u, float v)
 {
-  return asin(2 * v - 1) / PI;
+  return v;
 }
 
 float U(float x, float y)
 {
-  // inverse in x direction is sqrt
-  return sqrt(x);
+  float r = sqrt(x * x + y * y);
+  switch(warpFuncNum) {
+    case 1:
+      // inverse in x direction is sqrt
+      return sqrt(x); break;
+    case 2:
+      return x * cos(r) + y * sin(r); break;
+    default:
+      return 0.0; break;
+  }
 }
 
 float V(float x, float y)
 {
-  // inverse in y direction is offset sine
-  return 0.5 * (1 + sin(y * PI));
+  float r = sqrt(x * x + y * y);
+  switch(warpFuncNum) {
+    case 1:
+      // inverse in y direction is offset sine
+      return 0.5 * (1 + sin(y * PI)); break;
+    case 2:
+      return -1 * x * sin(r) + y * cos(r); break;
+    default:
+      return 0.0; break;
+  }
 }
 
 /*
@@ -87,35 +104,24 @@ void setupOutPixmap(int w, int h)
         outPixmap[(i * w + j) * RGBA + channel] = 0;
 }
 
-/**
- * setup output image size
- * @param keepOrigin make output image size same with input one's
- * @param w          output width
- * @param h          output height
- */
-void setOutputSize(bool keepOrigin, int &w, int &h)
+void setOutputSize(int &w, int &h)
 {
-  if (keepOrigin) {
-    w = inW;
-    h = inH;
-  } else {
-    int maxX, maxY = 0;
-    int *xs = new int[2]; // x coordinates
-    int *ys = new int[2]; // y coordinates
+  int maxX, maxY = 0;
+  int *xs = new int[2]; // x coordinates
+  int *ys = new int[2]; // y coordinates
 
-    xs[0] = 0;  xs[1] = inW; 
-    ys[0] = 0;  ys[1] = inH;
+  xs[0] = 0;  xs[1] = inW; 
+  ys[0] = 0;  ys[1] = inH;
 
-    for (int i = 0; i < 2; ++i) {
-      for (int j = 0; j < 2; ++j) {
-        maxX = fmax(maxX, X(xs[i], ys[j]));
-        maxY = fmax(maxY, Y(xs[i], ys[j]));
-      }
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      maxX = fmax(maxX, X(xs[i], ys[j]));
+      maxY = fmax(maxY, Y(xs[i], ys[j]));
     }
-
-    w = maxX;
-    h = maxY;
   }
+
+  w = maxX;
+  h = maxY;
   // use w and h to setup output pixmap 
   setupOutPixmap(w, h);
 }
@@ -125,7 +131,7 @@ void warp(int inW, int inH, unsigned char *inPixmap)
   int k, l;
   float u, v;
 
-  setOutputSize(true, outW, outH);
+  setOutputSize(outW, outH);
 
   for (int i = 0; i < outH; ++i) {
     for (int j = 0; j < outW; ++j) {
@@ -145,13 +151,22 @@ void warp(int inW, int inH, unsigned char *inPixmap)
 bool parseCommandLine(int argc, char* argv[]) 
 {
   switch (argc) {
-  case 2: case 3:
-    input  = argv[1];
-    output = argv[2] != NULL ? argv[2] : "output.png";
+  case 3: case 4:
+    if (argv[1][0] != '-') {
+      std::cerr << "Usage: warp -a | -b (choose warp function) inimage.png [outimage.png]" << std:: endl;
+      return false; break;
+    }
+    if (argv[1][1] == 'a') {
+      warpFuncNum = 1;
+    } else if (argv[1][1] == 'b') {
+      warpFuncNum = 2;
+    }
+    input  = argv[2];
+    output = argv[3] != NULL ? argv[3] : "output.png";
     return true; break;
 
   default:
-    std::cerr << "Usage: warp inimage.png [outimage.png]" << std:: endl;
+    std::cerr << "Usage: warp -a | -b (choose warp function) inimage.png [outimage.png]" << std:: endl;
     exit(1);
     return false; break;
   }
