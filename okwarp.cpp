@@ -28,16 +28,6 @@ static ImageIO ioWarped = ImageIO();
 
 /** Warp functions */
 
-float X(float u, float v)
-{
-  return u;
-}
-
-float Y(float u, float v)
-{
-  return v;
-}
-
 float U(float x, float y)
 {
   float r = sqrt(x * x + y * y);
@@ -104,34 +94,10 @@ void setupOutPixmap(int w, int h)
         outPixmap[(i * w + j) * RGBA + channel] = 0;
 }
 
-void setOutputSize(int &w, int &h)
-{
-  int maxX, maxY = 0;
-  int *xs = new int[2]; // x coordinates
-  int *ys = new int[2]; // y coordinates
-
-  xs[0] = 0;  xs[1] = inW; 
-  ys[0] = 0;  ys[1] = inH;
-
-  for (int i = 0; i < 2; ++i) {
-    for (int j = 0; j < 2; ++j) {
-      maxX = fmax(maxX, X(xs[i], ys[j]));
-      maxY = fmax(maxY, Y(xs[i], ys[j]));
-    }
-  }
-
-  w = maxX;
-  h = maxY;
-  // use w and h to setup output pixmap 
-  setupOutPixmap(w, h);
-}
-
 void warp(int inW, int inH, unsigned char *inPixmap)
 {
   int k, l;
   float u, v;
-
-  setOutputSize(outW, outH);
 
   for (int i = 0; i < outH; ++i) {
     for (int j = 0; j < outW; ++j) {
@@ -178,6 +144,11 @@ void loadImage()
 
   inW = ioOrigin.getWidth();
   inH = ioOrigin.getHeight();
+
+  // make output size same to input
+  outW = inW;
+  outH = inH;
+  setupOutPixmap(outW, outH);
 
   warp(inW, inH, ioOrigin.pixmap);
   ioWarped.setPixmap(outW, outH, outPixmap);
