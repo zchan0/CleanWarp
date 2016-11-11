@@ -195,23 +195,34 @@ void warp()
 
 bool parseCommandLine(int argc, char* argv[]) 
 {
+  // default flag is 3, which means clean all artifacts
+  cleanFlag = 3;  
+
+  int warpFuncIndex, cleanFlagIndex;
+  if (argv[2][0] == '-' && argv[2][1] == 'f') {
+    // did not set output image name
+    warpFuncIndex = 2;
+  } else if (argv[3][0] == '-' && argv[3][1] == 'f') {
+    warpFuncIndex = 3;
+  } else {
+    std::cerr << "Usage: okwarp inimage.png [outimage.png] -f 1 | 2 (choose warp function) [-m 0..3] (clean method)" << std:: endl;
+    return false;
+  }
+
+  cleanFlagIndex = warpFuncIndex + 2;
+
   switch (argc) {
-  case 3: case 4:
-    if (argv[1][0] != '-') {
-      std::cerr << "Usage: warp -a | -b (choose warp function) inimage.png [outimage.png]" << std:: endl;
-      return false; break;
+  case 4: case 5: case 6: case 7:
+    input  = argv[1];
+    warpFuncNum = (*argv[warpFuncIndex + 1]) - '0';
+    if (argv[cleanFlagIndex] != NULL && argv[cleanFlagIndex][0] == '-' && argv[cleanFlagIndex][1] == 'm') {
+      cleanFlag = (*argv[cleanFlagIndex + 1]) - '0';
     }
-    if (argv[1][1] == 'a') {
-      warpFuncNum = 1;
-    } else if (argv[1][1] == 'b') {
-      warpFuncNum = 2;
-    }
-    input  = argv[2];
-    output = argv[3] != NULL ? argv[3] : "output.png";
+    output = warpFuncIndex == 2 ? input + "-f" + std::to_string(warpFuncNum) + "-m" + std::to_string(cleanFlag) + ".png" : argv[warpFuncIndex - 1];
     return true; break;
 
   default:
-    std::cerr << "Usage: warp -a | -b (choose warp function) inimage.png [outimage.png]" << std:: endl;
+    std::cerr << "Usage: okwarp inimage.png [outimage.png] -f 1 | 2 (choose warp function) [-m 0..3] (clean method)" << std:: endl;
     exit(1);
     return false; break;
   }
