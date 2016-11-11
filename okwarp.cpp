@@ -8,12 +8,16 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <limits>
 
 #include "ImageIO/ImageIO.h"
 
-/** Special vars */
+#define DIM 3
+#define maximum(x, y, z) ((x) > (y)? ((x) > (z)? (x) : (z)) : ((y) > (z)? (y) : (z))) 
 
+/** Special vars */
 static const double PI = 3.1415926536;
+static const double EPSILON = 1.0e-4;
 static const unsigned char ESC = 27;
 
 /** ImageIO handlers */
@@ -69,8 +73,7 @@ float V(float x, float y)
   outwidth and outheight are the output image dimensions
 */
 void inv_map(float x, float y, float &u, float &v,
-  int inwidth, int inheight, int outwidth, int outheight){
-  
+  int inwidth, int inheight, int outwidth, int outheight) {
   // normalize (x, y) to (0...1, 0...1)
   x /= outwidth;  
   y /= outheight;
@@ -81,6 +84,10 @@ void inv_map(float x, float y, float &u, float &v,
   // scale normalized (u, v) to pixel coords
   u *= inwidth;     
   v *= inheight;
+
+  // eliminate strange line in center y
+  u = (u == inwidth)  ? (u - EPSILON) : u;
+  v = (v == inheight) ? (v - EPSILON) : v;
 }
 
 /** To draw on screen, outpixmap ALWAYS uses RGBA */
@@ -94,14 +101,93 @@ void setupOutPixmap(int w, int h)
         outPixmap[(i * w + j) * RGBA + channel] = 0;
 }
 
-void warp(int inW, int inH, unsigned char *inPixmap)
+// (x, y) is the pixel in output pixmap, inIndexs are the corresponding samples' index in input pixmap.
+void requestSamples(int x, int y, int inIndexs[])
+{
+  float xs[] = {x - 0.5, x, x + 0.5};
+  float ys[] = {y - 0.5, y, y + 0.5};
+  float us[DIM] = {0}, vs[DIM] = {0};
+
+  int k, l;
+  for (int i = 0; i < DIM; ++i) { 
+    for (int j = 0; j < DIM; ++j) { 
+      inv_map(xs[i], ys[j], us[i], vs[j], inW, inH, outW, outH);
+      k = (int)std::floor(vs[j]);
+      k = fmax(fmin(k, inH), 0);
+      l = (int)std::floor(us[i]);
+      l = fmax(fmin(l, inW), 0);
+      inIndexs[i * DIM + j] = k * inW + l;
+    }
+  }
+}
+
+bool needSupersampling(int x, int y, float threshold)
+{
+  float min = std::numeric_limits<float>::max();
+  float max = std::numeric_limits<float>::min();
+  
+  int indexs[DIM * DIM];  
+  requestSamples(x, y, indexs);
+
+  float lavg = 0; // luminance average
+  unsigned char ls[DIM * DIM];
+  for (int i = 0; i < DIM * DIM; ++i) {
+    ls[i] = maximum(ioOrigin.pixmap[i + R],ioOrigin.pixmap[i + G], ioOrigin.pixmap[i + B]);
+    lavg += ls[i];
+  }
+  lavg /= DIM * DIM;
+
+  for (int i = 0; i < DIM * DIM; ++i) {
+    if (fabsf(ls[i] - lavg) / lavg > threshold)
+      return true;
+  }
+  return false;
+}
+
+// calculate average color value at pixel(x, y)
+void calculateAverageValue(int x, int y, unsigned char pixel[RGBA])
+{
+  int indexs[DIM * DIM];
+  requestSamples(x, y, indexs);
+
+  int avgR = 0, avgG = 0, avgB = 0, avgA = 0;
+  for (int i = 0; i < DIM * DIM; ++i) {
+    avgR += ioOrigin.pixmap[i + R];
+    avgG += ioOrigin.pixmap[i + G];
+    avgB += ioOrigin.pixmap[i + B];
+    avgA += ioOrigin.pixmap[i + A];
+  }
+
+  avgR /= DIM * DIM; pixel[R] = avgR;
+  avgG /= DIM * DIM; pixel[G] = avgG;
+  avgB /= DIM * DIM; pixel[B] = avgB;
+  avgA /= DIM * DIM; pixel[A] = avgA;
+}
+
+void adaptiveSupersampling()
+{
+  unsigned char pixel[RGBA];
+  for (int i = 0; i < outH; ++i) 
+    for (int j = 0; j < outW; ++j) 
+      if (needSupersampling(j, i, 0.5)) {
+        calculateAverageValue(j, i, pixel);
+        outPixmap[(i * outW + j) * RGBA + R] = pixel[R];
+        outPixmap[(i * outW + j) * RGBA + G] = pixel[G];
+        outPixmap[(i * outW + j) * RGBA + B] = pixel[B];
+        outPixmap[(i * outW + j) * RGBA + A] = pixel[A];
+      }
+}
+
+void warp()
 {
   int k, l;
   float u, v;
 
+  adaptiveSupersampling();
+
   for (int i = 0; i < outH; ++i) {
     for (int j = 0; j < outW; ++j) {
-      inv_map(j, i, u, v, inW, inH, outW, outH);
+      inv_map((float)(j + 0.5), (float)(i + 0.5), u, v, inW, inH, outW, outH);
       k = (int)std::floor(v);
       l = (int)std::floor(u);
 
@@ -109,7 +195,7 @@ void warp(int inW, int inH, unsigned char *inPixmap)
         continue;
 
       for (int channel = 0; channel < RGBA; ++channel) 
-        outPixmap[(i * outW + j) * RGBA + channel] = inPixmap[(k * inW + l) * RGBA + channel];
+        outPixmap[(i * outW + j) * RGBA + channel] = ioOrigin.pixmap[(k * inW + l) * RGBA + channel];
     }
   }
 }
@@ -150,7 +236,7 @@ void loadImage()
   outH = inH;
   setupOutPixmap(outW, outH);
 
-  warp(inW, inH, ioOrigin.pixmap);
+  warp();
   ioWarped.setPixmap(outW, outH, outPixmap);
 }
 
