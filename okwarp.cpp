@@ -23,7 +23,7 @@ static const unsigned char ESC = 27;
 /** ImageIO handlers */
 
 static int inW, inH, outW, outH;
-static int warpFuncNum;
+static int warpFuncNum, cleanFlag;
 static unsigned char *outPixmap;
 static std::string input, output;
 
@@ -40,7 +40,7 @@ float U(float x, float y)
       // inverse in x direction is sqrt
       return sqrt(x); break;
     case 2:
-      return x - y * cos(45 * PI / 180.0); 
+      return x - y * cos(45 * PI / 180.0); break;
       // return x * cos(r) + y * sin(r); break;
     default:
       return 0.0; break;
@@ -165,6 +165,50 @@ void supersampling(int x, int y, unsigned char (&pixel)[RGBA])
   avgA /= DIM * DIM; pixel[A] = avgA;
 }
 
+// it is easiser to calculate in grayscale
+// refers to https://www.wikiwand.com/en/Bilinear_interpolation
+unsigned char bilinearInterpolation(float u, float v, int channel, const unsigned char *inPixmap)
+{
+  int u0, u1, u2, u3, v0, v1, v2, v3;
+  float s, t;
+
+  u = std::fmax(0.5, std::fmin(u, inW - 0.5)); u0 = std::floor(u);
+  v = std::fmax(0.5, std::fmin(v, inH - 0.5)); v0 = std::floor(v);
+
+  u1 = u0 + 1; v1 = v0;
+  u2 = u0;     v2 = v0 + 1;
+  u3 = u0 + 1; v3 = v0 + 1;
+
+  s = u - u0;
+  t = v - v0;
+
+  unsigned char c0, c1, c2, c3, c;
+  c0 = inPixmap[(v0 * inW + u0) * RGBA + channel];
+  c1 = inPixmap[(v1 * inW + u1) * RGBA + channel];
+  c2 = inPixmap[(v2 * inW + u2) * RGBA + channel];
+  c3 = inPixmap[(v3 * inW + u3) * RGBA + channel];
+  c  = (1 - s) * (1 - t) * c0 + s * (1 - t) * c1 + (1 - s) * t * c2 + s * t * c3;
+
+  return c;
+}
+
+// if scalefactor < 1, means pixel(x, y) is been magnified
+// if scalefactor > 1, means pixel(x, y) is been minified
+float calculateScalefactor(int x, int y)
+{
+  float u0, u1, u2, u3, v0, v1, v2, v3;
+
+  inv_map(x - 0.5, y - 0.5, u0, v0, inW, inH, outW, outH);
+  inv_map(x + 0.5, y - 0.5, u1, v1, inW, inH, outW, outH);
+  inv_map(x - 0.5, y + 0.5, u2, v2, inW, inH, outW, outH);
+  inv_map(x + 0.5, y + 0.5, u3, v3, inW, inH, outW, outH);
+
+  float deltaU = (fabsf(u1 - u0) + fabsf(u3 - u2)) / 2; // horizontal edge
+  float deltaV = (fabsf(v1 - v0) + fabsf(v3 - v2)) / 2; // vertical edge
+
+  return deltaU * deltaU + deltaV * deltaV;
+}
+
 void warp()
 {
   int k, l;
@@ -177,17 +221,50 @@ void warp()
       k = (int)std::floor(v);
       l = (int)std::floor(u);
 
-      if (k < 0 || k > inH || l < 0 || l > inW) 
+      if (k < 0 || k > inH || l < 0 || l > inW) {
         continue;
+      }
 
-      if (needSupersampling(j, i, 0.5)) {
-        supersampling(j, i, pixel);
-        for (int channel = 0; channel < RGBA; ++channel) {
-          outPixmap[(i * outW + j) * RGBA + channel] = pixel[channel];
-        }
-      } else {
-        for (int channel = 0; channel < RGBA; ++channel) 
-          outPixmap[(i * outW + j) * RGBA + channel] = ioOrigin.pixmap[(k * inW + l) * RGBA + channel];
+      for (int channel = 0; channel < RGBA; ++channel) {
+        outPixmap[(i * outW + j) * RGBA + channel] = ioOrigin.pixmap[(k * inW + l) * RGBA + channel];
+      }
+
+      float scalefactor = calculateScalefactor(j, i);
+      switch(cleanFlag) {
+        // none
+        case 0:
+          break;
+        // bilinear interpolation
+        case 1:
+          if (scalefactor < 1) {
+            for (int channel = 0; channel < RGBA; ++channel) {
+              outPixmap[(i * outW + j) * RGBA + channel] = bilinearInterpolation(u, v, channel, ioOrigin.pixmap);
+            }
+          }
+          break;
+        // adaptive supersampling
+        case 2:
+          if (scalefactor > 1 && needSupersampling(j, i, 0.5)) {
+            supersampling(j, i, pixel);
+            for (int channel = 0; channel < RGBA; ++channel) {
+              outPixmap[(i * outW + j) * RGBA + channel] = pixel[channel];
+            } 
+          }
+          break;
+        // bilinear interpolation & adaptive supersampling
+        case 3:
+        default:
+          if (scalefactor > 1 && needSupersampling(j, i, 0.5)) {
+            supersampling(j, i, pixel);
+            for (int channel = 0; channel < RGBA; ++channel) {
+              outPixmap[(i * outW + j) * RGBA + channel] = pixel[channel];
+            }
+          } else if (scalefactor < 1) {
+            for (int channel = 0; channel < RGBA; ++channel) {
+              outPixmap[(i * outW + j) * RGBA + channel] = bilinearInterpolation(u, v, channel, ioOrigin.pixmap);
+            }
+          }
+          break;
       }
     }
   }
