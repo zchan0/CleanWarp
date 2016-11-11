@@ -40,7 +40,8 @@ float U(float x, float y)
       // inverse in x direction is sqrt
       return sqrt(x); break;
     case 2:
-      return x * cos(r) + y * sin(r); break;
+      return x - y * cos(45 * PI / 180.0); 
+      // return x * cos(r) + y * sin(r); break;
     default:
       return 0.0; break;
   }
@@ -54,7 +55,8 @@ float V(float x, float y)
       // inverse in y direction is offset sine
       return 0.5 * (1 + sin(y * PI)); break;
     case 2:
-      return -1 * x * sin(r) + y * cos(r); break;
+      // return -1 * x * sin(r) + y * cos(r); break;
+      return y; break;
     default:
       return 0.0; break;
   }
@@ -144,8 +146,7 @@ bool needSupersampling(int x, int y, float threshold)
   return false;
 }
 
-// calculate average color value at pixel(x, y)
-void calculateAverageValue(int x, int y, unsigned char pixel[RGBA])
+void supersampling(int x, int y, unsigned char (&pixel)[RGBA])
 {
   int indexs[DIM * DIM];
   requestSamples(x, y, indexs);
@@ -164,26 +165,11 @@ void calculateAverageValue(int x, int y, unsigned char pixel[RGBA])
   avgA /= DIM * DIM; pixel[A] = avgA;
 }
 
-void adaptiveSupersampling()
-{
-  unsigned char pixel[RGBA];
-  for (int i = 0; i < outH; ++i) 
-    for (int j = 0; j < outW; ++j) 
-      if (needSupersampling(j, i, 0.5)) {
-        calculateAverageValue(j, i, pixel);
-        outPixmap[(i * outW + j) * RGBA + R] = pixel[R];
-        outPixmap[(i * outW + j) * RGBA + G] = pixel[G];
-        outPixmap[(i * outW + j) * RGBA + B] = pixel[B];
-        outPixmap[(i * outW + j) * RGBA + A] = pixel[A];
-      }
-}
-
 void warp()
 {
   int k, l;
   float u, v;
-
-  adaptiveSupersampling();
+  unsigned char pixel[RGBA];
 
   for (int i = 0; i < outH; ++i) {
     for (int j = 0; j < outW; ++j) {
@@ -194,8 +180,15 @@ void warp()
       if (k < 0 || k > inH || l < 0 || l > inW) 
         continue;
 
-      for (int channel = 0; channel < RGBA; ++channel) 
-        outPixmap[(i * outW + j) * RGBA + channel] = ioOrigin.pixmap[(k * inW + l) * RGBA + channel];
+      if (needSupersampling(j, i, 0.5)) {
+        supersampling(j, i, pixel);
+        for (int channel = 0; channel < RGBA; ++channel) {
+          outPixmap[(i * outW + j) * RGBA + channel] = pixel[channel];
+        }
+      } else {
+        for (int channel = 0; channel < RGBA; ++channel) 
+          outPixmap[(i * outW + j) * RGBA + channel] = ioOrigin.pixmap[(k * inW + l) * RGBA + channel];
+      }
     }
   }
 }
