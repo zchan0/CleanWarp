@@ -271,10 +271,29 @@ void warp()
   }
 }
 
+void promptInstruction()
+{
+  std::cerr << "Usage: okwarp inimage.png [outimage.png] -f 1 | 2 (warp function) [-m 0..3] (clean method)" << std::endl;
+  std::cerr << "-m 0: none clean method" << std::endl;
+  std::cerr << "-m 1: clean warp with bilinear interpolation" << std::endl;
+  std::cerr << "-m 2: clean warp with adaptive supersampling" << std::endl;
+  std::cerr << "-m 3: clean warp with both bilinear interpolation & adaptive supersampling" << std::endl;
+}
+
 bool parseCommandLine(int argc, char* argv[]) 
 {
+  if (argc < 4 || argc > 7) {
+    return false;
+  }
+
   // default flag is 3, which means clean all artifacts
-  cleanFlag = 3;  
+  cleanFlag = 3; 
+  std::string cleanMethodList[4] = {
+    "warp with no clean method",
+    "clean warp with bilinear interpolation",
+    "clean warp with adaptive supersampling",
+    "clean warp with both bilinear interpolation & adaptive supersampling"
+  }; 
 
   int warpFuncIndex, cleanFlagIndex;
   if (argv[2][0] == '-' && argv[2][1] == 'f') {
@@ -283,7 +302,6 @@ bool parseCommandLine(int argc, char* argv[])
   } else if (argv[3][0] == '-' && argv[3][1] == 'f') {
     warpFuncIndex = 3;
   } else {
-    std::cerr << "Usage: okwarp inimage.png [outimage.png] -f 1 | 2 (choose warp function) [-m 0..3] (clean method)" << std:: endl;
     return false;
   }
 
@@ -297,10 +315,10 @@ bool parseCommandLine(int argc, char* argv[])
       cleanFlag = (*argv[cleanFlagIndex + 1]) - '0';
     }
     output = warpFuncIndex == 2 ? input + "-f" + std::to_string(warpFuncNum) + "-m" + std::to_string(cleanFlag) + ".png" : argv[warpFuncIndex - 1];
+    std::cout << cleanMethodList[cleanFlag] << std::endl;
     return true; break;
 
   default:
-    std::cerr << "Usage: okwarp inimage.png [outimage.png] -f 1 | 2 (choose warp function) [-m 0..3] (clean method)" << std:: endl;
     exit(1);
     return false; break;
   }
@@ -363,6 +381,9 @@ int main(int argc, char *argv[])
 
   if (parseCommandLine(argc, argv)) {
     loadImage();  
+  } else {
+    promptInstruction();
+    exit(0);
   }
 
   // Origin image window
