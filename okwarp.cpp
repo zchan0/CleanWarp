@@ -169,24 +169,25 @@ void supersampling(int x, int y, unsigned char (&pixel)[RGBA])
 // refers to https://www.wikiwand.com/en/Bilinear_interpolation
 unsigned char bilinearInterpolation(float u, float v, int channel, const unsigned char *inPixmap)
 {
-  int u0, u1, u2, u3, v0, v1, v2, v3;
-  float s, t;
+  float u0, v0, u1, v1, u2, v2, u3, v3, s, t;
 
-  u = std::fmax(0.5, std::fmin(u, inW - 0.5)); u0 = std::floor(u);
-  v = std::fmax(0.5, std::fmin(v, inH - 0.5)); v0 = std::floor(v);
+  u  = fmax(0.5, fmin(u, inW - 0.5));
+  v  = fmax(0.5, fmin(v, inH - 0.5));
+  u0 = fmin(floor(u), floor(u - 0.5)) + 0.5;
+  v0 = fmin(floor(v), floor(v - 0.5)) + 0.5;
 
-  u1 = u0 + 1; v1 = v0;
-  u2 = u0;     v2 = v0 + 1;
-  u3 = u0 + 1; v3 = v0 + 1;
+  u1 = floor(u0 + 1);  v1 = floor(v0);
+  u2 = floor(u0);      v2 = floor(v0 + 1);
+  u3 = floor(u0 + 1);  v3 = floor(v0 + 1);
 
   s = u - u0;
   t = v - v0;
 
   unsigned char c0, c1, c2, c3, c;
-  c0 = inPixmap[(v0 * inW + u0) * RGBA + channel];
-  c1 = inPixmap[(v1 * inW + u1) * RGBA + channel];
-  c2 = inPixmap[(v2 * inW + u2) * RGBA + channel];
-  c3 = inPixmap[(v3 * inW + u3) * RGBA + channel];
+  c0 = inPixmap[((int)v0 * inW + (int)u0) * RGBA + channel];
+  c1 = inPixmap[((int)v1 * inW + (int)u1) * RGBA + channel];
+  c2 = inPixmap[((int)v2 * inW + (int)u2) * RGBA + channel];
+  c3 = inPixmap[((int)v3 * inW + (int)u3) * RGBA + channel];
   c  = (1 - s) * (1 - t) * c0 + s * (1 - t) * c1 + (1 - s) * t * c2 + s * t * c3;
 
   return c;
