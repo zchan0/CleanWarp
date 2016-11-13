@@ -31,7 +31,7 @@ static ImageIO ioOrigin = ImageIO();
 static ImageIO ioWarped = ImageIO();
 
 /** Warp functions */
-
+// warp function 2 refers to http://stackoverflow.com/q/36174431
 float U(float x, float y)
 {
   float r = sqrt(x * x + y * y);
@@ -40,8 +40,9 @@ float U(float x, float y)
       // inverse in x direction is sqrt
       return sqrt(x); break;
     case 2:
-      return x - y * cos(45 * PI / 180.0); break;
+      // return x - y * cos(45 * PI / 180.0); break;
       // return x * cos(r) + y * sin(r); break;
+      return x + sin(25.0 * y + 30.0 * x + 0.3477) * 0.05; break;
     default:
       return 0.0; break;
   }
@@ -56,7 +57,8 @@ float V(float x, float y)
       return 0.5 * (1 + sin(y * PI)); break;
     case 2:
       // return -1 * x * sin(r) + y * cos(r); break;
-      return y; break;
+      // return y; break;
+      return y + sin(25.0 * y + 30.0 * x + 0.3477) * 0.05; break;
     default:
       return 0.0; break;
   }
